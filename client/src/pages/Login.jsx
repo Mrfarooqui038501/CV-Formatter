@@ -15,11 +15,12 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
+
     try {
       const response = await api.post('/auth/login', formData);
       localStorage.setItem('token', response.data.token);
       toast.success('Login successful!');
-      navigate('/');
+      navigate('/'); // ✅ Redirect to dashboard
     } catch (error) {
       console.error('Login error:', error);
       toast.error(error.response?.data?.message || 'Login failed');
@@ -69,9 +70,7 @@ const Login = () => {
       <div className="auth-footer">
         <p className="auth-footer-text">
           Don't have an account?{' '}
-          <Link to="/register" className="auth-link">
-            Register
-          </Link>
+          <Link to="/register" className="auth-link">Register</Link>
         </p>
       </div>
     </div>

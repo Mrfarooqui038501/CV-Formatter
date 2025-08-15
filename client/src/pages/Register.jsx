@@ -13,7 +13,7 @@ const Register = () => {
   const navigate = useNavigate();
 
   const handleChange = (e) => {
-    setFormData({...formData, [e.target.name]: e.target.value});
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async (e) => {
@@ -27,13 +27,13 @@ const Register = () => {
     setIsLoading(true);
 
     try {
-      const response = await api.post('/auth/register', {
+      await api.post('/auth/register', {
         email: formData.email,
         password: formData.password
       });
-      localStorage.setItem('token', response.data.token);
-      toast.success('Registration successful!');
-      navigate('/');
+
+      toast.success('Registration successful! Please login.');
+      navigate('/login'); // ✅ Redirect to login page
     } catch (error) {
       console.error('Registration error:', error);
       toast.error(error.response?.data?.message || 'Registration failed');
@@ -47,9 +47,7 @@ const Register = () => {
       <h2 className="auth-title">Register</h2>
       <form onSubmit={handleSubmit} className="auth-form">
         <div className="form-group">
-          <label htmlFor="email" className="form-label">
-            Email
-          </label>
+          <label htmlFor="email" className="form-label">Email</label>
           <input
             type="email"
             id="email"
@@ -61,9 +59,7 @@ const Register = () => {
           />
         </div>
         <div className="form-group">
-          <label htmlFor="password" className="form-label">
-            Password
-          </label>
+          <label htmlFor="password" className="form-label">Password</label>
           <input
             type="password"
             id="password"
@@ -75,9 +71,7 @@ const Register = () => {
           />
         </div>
         <div className="form-group">
-          <label htmlFor="confirmPassword" className="form-label">
-            Confirm Password
-          </label>
+          <label htmlFor="confirmPassword" className="form-label">Confirm Password</label>
           <input
             type="password"
             id="confirmPassword"
@@ -101,9 +95,7 @@ const Register = () => {
       <div className="auth-footer">
         <p className="auth-footer-text">
           Already have an account?{' '}
-          <Link to="/login" className="auth-link">
-            Login
-          </Link>
+          <Link to="/login" className="auth-link">Login</Link>
         </p>
       </div>
     </div>
