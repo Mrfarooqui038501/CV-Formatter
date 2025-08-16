@@ -1,34 +1,27 @@
+// client/components/CVEditor.jsx
 import { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 import api from "../api/axios";
 import Spinner from "./Spinner";
 
 const CVEditor = ({ cvId, originalContent, onUpdate }) => {
-  const [formattedContent, setFormattedContent] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedModel, setSelectedModel] = useState("gpt4");
-  const [editMode, setEditMode] = useState(false);
-  const [editedContent, setEditedContent] = useState("");
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   useEffect(() => {
-    if (originalContent) {
-      setEditedContent(originalContent);
-    }
-  }, [originalContent]);
+    setPreviewHtml("");
+  }, [cvId]);
 
   const processCV = async () => {
     if (!cvId) return;
     try {
       setIsProcessing(true);
-      const response = await api.post("/ai/process", {
-        cvId,
-        model: selectedModel,
-      });
-
-      const formatted = response.data.data?.formattedContent || response.data.formattedContent;
-      setFormattedContent(formatted);
-
+      const { data } = await api.post("/ai/process", { cvId, model: selectedModel });
+      setPreviewHtml(data?.data?.previewHtml || "");
       toast.success("CV processed successfully!");
+      onUpdate && onUpdate();
     } catch (error) {
       console.error("Processing error:", error);
       toast.error(error.response?.data?.message || "Failed to process CV");
@@ -37,33 +30,50 @@ const CVEditor = ({ cvId, originalContent, onUpdate }) => {
     }
   };
 
-  const handleSave = async () => {
+  const exportFinal = async () => {
     try {
-      await api.put(`/files/${cvId}`, { formattedContent });
-      toast.success("Changes saved successfully!");
-      setEditMode(false);
-      if (onUpdate) onUpdate();
-    } catch (error) {
-      console.error("Save error:", error);
-      toast.error(error.response?.data?.message || "Failed to save changes");
+      const res = await api.get(`/files/${cvId}/export/cv`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Client_CV.docx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to export Final CV");
     }
   };
 
-  const exportCV = async () => {
+  const exportRegistration = async () => {
     try {
-      const response = await api.get(`/files/${cvId}/export`, {
-        responseType: "blob",
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", "formatted_cv.docx");
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode.removeChild(link);
-    } catch (error) {
-      console.error("Export error:", error);
-      toast.error(error.response?.data?.message || "Failed to export CV");
+      const res = await api.get(`/files/${cvId}/export/registration`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Registration_Form.docx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to export Registration Form");
+    }
+  };
+
+  const uploadHeadshot = async (file) => {
+    if (!file) return;
+    if (!cvId) return toast.error("Select a CV first");
+    const form = new FormData();
+    form.append("photo", file);
+    try {
+      setPhotoUploading(true);
+      await api.post(`/files/${cvId}/headshot`, form, { headers: { "Content-Type": "multipart/form-data" }});
+      toast.success("Headshot uploaded");
+    } catch (e) {
+      console.error(e);
+      toast.error(e.response?.data?.message || "Failed to upload headshot");
+    } finally {
+      setPhotoUploading(false);
     }
   };
 
@@ -89,71 +99,31 @@ const CVEditor = ({ cvId, originalContent, onUpdate }) => {
             {isProcessing ? <Spinner size="small" /> : "Process CV"}
           </button>
         </div>
-        {formattedContent && (
-          <div className="editor-secondary-controls">
-            <button
-              onClick={() => setEditMode(!editMode)}
-              className="btn btn-secondary"
-            >
-              {editMode ? "Cancel" : "Edit"}
-            </button>
-            <button
-              onClick={exportCV}
-              className="btn btn-success"
-            >
-              Export CV
-            </button>
-          </div>
-        )}
+
+        <div className="editor-secondary-controls">
+          <label className="btn">
+            {photoUploading ? "Uploading..." : "Upload Headshot"}
+            <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e)=>uploadHeadshot(e.target.files?.[0])}/>
+          </label>
+          <button onClick={exportFinal} className="btn btn-success">Export Final CV</button>
+          <button onClick={exportRegistration} className="btn btn-secondary">Export Registration</button>
+        </div>
       </div>
 
-      {formattedContent ? (
+      {previewHtml ? (
         <div className="cv-display-grid">
           <div className="cv-panel">
-            <h3 className="cv-panel-title">
-              Original CV
-            </h3>
-            <div className="cv-content">
-              {originalContent}
-            </div>
+            <h3 className="cv-panel-title">Original CV</h3>
+            <div className="cv-content">{originalContent}</div>
           </div>
           <div className="cv-panel">
-            <h3 className="cv-panel-title">
-              Formatted CV
-            </h3>
-            {editMode ? (
-              <textarea
-                value={editedContent}
-                onChange={(e) => setEditedContent(e.target.value)}
-                className="cv-textarea"
-              />
-            ) : (
-              <div
-                className="cv-content"
-                style={{ fontFamily: "Palatino Linotype, serif" }}
-                dangerouslySetInnerHTML={{
-                  __html: formattedContent.replace(/\n/g, "<br />"),
-                }}
-              />
-            )}
+            <h3 className="cv-panel-title">Template Preview</h3>
+            <div className="cv-content" style={{ fontFamily: "Palatino Linotype, serif" }} dangerouslySetInnerHTML={{ __html: previewHtml }} />
           </div>
         </div>
       ) : (
         <div className="empty-state">
-          <p className="empty-state-text">
-            Upload a CV file and click "Process CV" to see the formatted version.
-          </p>
-        </div>
-      )}
-
-      {editMode && (
-        <div className="save-container">
-          <button
-            onClick={handleSave}
-            className="btn btn-primary btn-large"
-          >
-            Save Changes
-          </button>
+          <p className="empty-state-text">Upload a CV and click "Process CV" to generate the template output.</p>
         </div>
       )}
     </div>

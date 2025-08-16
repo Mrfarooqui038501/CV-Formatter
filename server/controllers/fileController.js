@@ -1,303 +1,186 @@
+// server/controllers/fileController.js
 import CV from '../models/CV.js';
 import { parsePDF, parseDOCX, parseExcel } from '../services/fileParser.js';
-import { generateDOCX } from '../services/docGenerator.js';
+import { renderFinalCvDocx, renderRegistrationDocx } from '../services/renderService.js';
 
-export const uploadFile = async (req, res, next) => {
+// Upload CV file
+export const uploadFile = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'No file uploaded' 
-      });
-    }
+    if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
 
-    let content;
     const fileType = req.file.mimetype;
-
-    // Validate file type first
-    const supportedTypes = [
+    const supported = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/msword' // Added support for .doc files
+      'application/msword'
     ];
-
-    if (!supportedTypes.includes(fileType)) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Unsupported file type. Please upload PDF, DOCX, DOC, XLS, or XLSX files.' 
-      });
+    if (!supported.includes(fileType)) {
+      return res.status(400).json({ success: false, message: 'Unsupported file type. Please upload PDF, DOCX, DOC, XLS, or XLSX files.' });
     }
 
-    // Parse file based on type
-    try {
-      if (fileType === 'application/pdf') {
-        content = await parsePDF(req.file.buffer);
-      } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileType === 'application/msword') {
-        content = await parseDOCX(req.file.buffer);
-      } else if (fileType === 'application/vnd.ms-excel' || fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-        content = await parseExcel(req.file.buffer);
-      }
-    } catch (parseError) {
-      console.error('File parsing error:', parseError);
-      return res.status(400).json({ 
-        success: false,
-        message: 'Failed to parse the uploaded file. Please ensure the file is not corrupted.' 
-      });
+    let content = '';
+    if (fileType === 'application/pdf') content = await parsePDF(req.file.buffer);
+    else if (fileType.includes('word')) content = await parseDOCX(req.file.buffer);
+    else content = await parseExcel(req.file.buffer);
+
+    if (!content?.trim()) {
+      return res.status(400).json({ success: false, message: 'The uploaded file appears to be empty or could not be read.' });
     }
 
-    // Validate content
-    if (!content || content.trim().length === 0) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'The uploaded file appears to be empty or could not be read.' 
-      });
-    }
-
-    const cv = new CV({
+    const cv = await CV.create({
       userId: req.user.id,
       originalFilename: req.file.originalname,
       originalContent: content,
       processingStatus: 'pending',
-      fileType: fileType,
+      fileType,
       fileSize: req.file.size
     });
-
-    await cv.save();
 
     res.status(201).json({
       success: true,
       message: 'File uploaded successfully',
       cvId: cv._id,
       filename: cv.originalFilename,
-      fileType: fileType,
+      fileType,
       fileSize: req.file.size,
-      contentPreview: content.substring(0, 500) // Return first 500 chars for preview
+      contentPreview: content.substring(0, 500)
     });
   } catch (error) {
     console.error('Upload error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Internal server error during file upload'
-    });
+    res.status(500).json({ success: false, message: 'Internal server error during file upload' });
   }
 };
 
-export const getFiles = async (req, res, next) => {
+// ✅ Get all user files
+export const getFiles = async (req, res) => {
   try {
-    const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
-    
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const sort = {};
-    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
-
-    const cvs = await CV.find({ userId: req.user.id })
-      .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .select('-originalContent -formattedContent'); // Exclude large content fields
-
-    const total = await CV.countDocuments({ userId: req.user.id });
-
-    return res.status(200).json({
-      success: true,
-      count: cvs.length,
-      total,
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(total / parseInt(limit)),
-      data: cvs
-    });
-  } catch (error) {
-    console.error('Get files error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to retrieve files'
-    });
+    const cvs = await CV.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    res.json({ success: true, data: cvs });
+  } catch (e) {
+    console.error('Get files error:', e);
+    res.status(500).json({ success: false, message: 'Failed to fetch files' });
   }
 };
 
-export const getFileById = async (req, res, next) => {
+// ✅ Get file by ID
+export const getFileById = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) return res.status(400).json({ success: false, message: 'Invalid file ID format' });
 
-    // Validate ObjectId format
-    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid file ID format'
-      });
-    }
+    const cv = await CV.findOne({ _id: id, userId: req.user.id });
+    if (!cv) return res.status(404).json({ success: false, message: 'CV not found' });
 
-    const cv = await CV.findOne({ 
-      _id: id, 
-      userId: req.user.id 
-    });
-
-    if (!cv) {
-      return res.status(404).json({
-        success: false,
-        message: 'CV not found'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: cv
-    });
-  } catch (error) {
-    console.error('Get file error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to retrieve file'
-    });
+    res.json({ success: true, data: cv });
+  } catch (e) {
+    console.error('Get file error:', e);
+    res.status(500).json({ success: false, message: 'Failed to fetch file' });
   }
 };
 
-export const updateFile = async (req, res, next) => {
+// ✅ Update file
+export const updateFile = async (req, res) => {
   try {
     const { id } = req.params;
-    const { formattedContent } = req.body;
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) return res.status(400).json({ success: false, message: 'Invalid file ID format' });
 
-    // Validate ObjectId format
-    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid file ID format'
-      });
-    }
-
-    if (!formattedContent || formattedContent.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Formatted content is required and cannot be empty'
-      });
-    }
-
-    const cv = await CV.findOneAndUpdate(
+    const updated = await CV.findOneAndUpdate(
       { _id: id, userId: req.user.id },
-      { 
-        formattedContent: formattedContent.trim(),
-        updatedAt: new Date(),
-        processingStatus: 'completed'
-      },
-      { new: true, runValidators: true }
+      { $set: req.body },
+      { new: true }
     );
 
-    if (!cv) {
-      return res.status(404).json({
-        success: false,
-        message: 'CV not found'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'CV updated successfully',
-      data: cv
-    });
-  } catch (error) {
-    console.error('Update error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to update CV'
-    });
+    if (!updated) return res.status(404).json({ success: false, message: 'CV not found' });
+    res.json({ success: true, data: updated });
+  } catch (e) {
+    console.error('Update file error:', e);
+    res.status(500).json({ success: false, message: 'Failed to update file' });
   }
 };
 
-export const deleteFile = async (req, res, next) => {
+// ✅ Delete file
+export const deleteFile = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) return res.status(400).json({ success: false, message: 'Invalid file ID format' });
 
-    // Validate ObjectId format
-    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid file ID format'
-      });
-    }
+    const cv = await CV.findOneAndDelete({ _id: id, userId: req.user.id });
+    if (!cv) return res.status(404).json({ success: false, message: 'CV not found' });
 
-    const cv = await CV.findOneAndDelete({ 
-      _id: id, 
-      userId: req.user.id 
-    });
-
-    if (!cv) {
-      return res.status(404).json({
-        success: false,
-        message: 'CV not found'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'CV deleted successfully'
-    });
-  } catch (error) {
-    console.error('Delete error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to delete CV'
-    });
+    res.json({ success: true, message: 'CV deleted successfully' });
+  } catch (e) {
+    console.error('Delete error:', e);
+    res.status(500).json({ success: false, message: 'Failed to delete CV' });
   }
 };
 
-export const exportFile = async (req, res, next) => {
+// ✅ Upload headshot (this was missing earlier!)
+export const uploadHeadshot = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) return res.status(400).json({ success: false, message: 'Invalid file ID format' });
+    if (!req.file) return res.status(400).json({ success: false, message: 'No image uploaded' });
 
-    // Validate ObjectId format
-    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid file ID format'
-      });
-    }
+    const cv = await CV.findOne({ _id: id, userId: req.user.id });
+    if (!cv) return res.status(404).json({ success: false, message: 'CV not found' });
 
-    const cv = await CV.findOne({ 
-      _id: id, 
-      userId: req.user.id 
+    cv.headshot = req.file.buffer;
+    await cv.save();
+
+    res.status(200).json({ success: true, message: 'Headshot uploaded' });
+  } catch (e) {
+    console.error('Headshot upload error:', e);
+    res.status(500).json({ success: false, message: 'Failed to upload headshot' });
+  }
+};
+
+// ✅ Export Final CV
+export const exportFinalCv = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) return res.status(400).json({ success: false, message: 'Invalid file ID format' });
+
+    const cv = await CV.findOne({ _id: id, userId: req.user.id });
+    if (!cv) return res.status(404).json({ success: false, message: 'CV not found' });
+    if (!cv.formattedStructured) return res.status(400).json({ success: false, message: 'CV not processed yet' });
+
+    const buffer = await renderFinalCvDocx({
+      cv: cv.formattedStructured,
+      headshotBuffer: cv.headshot || null
     });
 
-    if (!cv) {
-      return res.status(404).json({
-        success: false,
-        message: 'CV not found'
-      });
-    }
+    const clean = cv.originalFilename.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${clean}_Client_CV.docx"`);
+    res.setHeader('Content-Length', buffer.length);
+    return res.end(buffer);
+  } catch (e) {
+    console.error('Export Final CV error:', e);
+    res.status(500).json({ success: false, message: 'Failed to export Final CV' });
+  }
+};
 
-    const contentToExport = cv.formattedContent || cv.originalContent;
-    
-    if (!contentToExport || contentToExport.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No content available for export'
-      });
-    }
+// ✅ Export Registration Form
+export const exportRegistrationForm = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) return res.status(400).json({ success: false, message: 'Invalid file ID format' });
 
-    try {
-      const buffer = await generateDOCX(contentToExport);
-      
-      // Clean filename for export
-      const cleanFilename = cv.originalFilename.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
-      
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.setHeader('Content-Disposition', `attachment; filename="${cleanFilename}_formatted.docx"`);
-      res.setHeader('Content-Length', buffer.length);
-      
-      return res.end(buffer);
-    } catch (generateError) {
-      console.error('Document generation error:', generateError);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to generate document for export'
-      });
-    }
-  } catch (error) {
-    console.error('Export error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to export file'
-    });
+    const cv = await CV.findOne({ _id: id, userId: req.user.id });
+    if (!cv) return res.status(404).json({ success: false, message: 'CV not found' });
+    if (!cv.registrationStructured) return res.status(400).json({ success: false, message: 'Registration data not processed yet' });
+
+    const buffer = await renderRegistrationDocx(cv.registrationStructured);
+    const clean = cv.originalFilename.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${clean}_Registration_Form.docx"`);
+    res.setHeader('Content-Length', buffer.length);
+    return res.end(buffer);
+  } catch (e) {
+    console.error('Export Registration error:', e);
+    res.status(500).json({ success: false, message: 'Failed to export Registration Form' });
   }
 };

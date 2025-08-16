@@ -1,3 +1,4 @@
+// server/controllers/aiController.js
 import CV from '../models/CV.js';
 import { formatWithGPT4, formatWithClaude, formatWithGemini } from '../services/aiService.js';
 
@@ -39,7 +40,7 @@ export const processCV = async (req, res, next) => {
       });
     }
 
-
+    // Check if CV has content to process
     if (!cv.originalContent || cv.originalContent.trim().length === 0) {
       return res.status(400).json({ 
         success: false,
@@ -51,31 +52,37 @@ export const processCV = async (req, res, next) => {
     cv.processingStatus = 'processing';
     await cv.save();
 
-    let formattedContent;
+    let result;
     try {
+      console.log(`Processing CV ${cvId} with ${model}...`);
+      
       switch (model) {
         case 'gpt4':
-          formattedContent = await formatWithGPT4(cv.originalContent);
+          result = await formatWithGPT4(cv.originalContent);
           break;
         case 'claude':
-          formattedContent = await formatWithClaude(cv.originalContent);
+          result = await formatWithClaude(cv.originalContent);
           break;
         case 'gemini':
-          formattedContent = await formatWithGemini(cv.originalContent);
+          result = await formatWithGemini(cv.originalContent);
           break;
       }
 
       // Validate formatted content
-      if (!formattedContent || formattedContent.trim().length === 0) {
-        throw new Error('AI service returned empty content');
+      if (!result || !result.cvStructured || !result.registrationStructured) {
+        throw new Error('AI service returned incomplete data');
       }
 
-      // Update CV with formatted content
-      cv.formattedContent = formattedContent;
+      // Update CV with all processed data
+      cv.formattedContent = result.formattedContent || JSON.stringify(result.cvStructured, null, 2);
+      cv.formattedStructured = result.cvStructured;
+      cv.registrationStructured = result.registrationStructured;
       cv.processingStatus = 'completed';
       cv.processedAt = new Date();
       cv.modelUsed = model;
       await cv.save();
+
+      console.log(`Successfully processed CV ${cvId} with ${model}`);
 
       res.status(200).json({
         success: true,
@@ -83,8 +90,11 @@ export const processCV = async (req, res, next) => {
         data: {
           cvId: cv._id,
           modelUsed: model,
-          formattedContent,
-          processedAt: cv.processedAt
+          formattedContent: cv.formattedContent,
+          previewHtml: result.previewHtml || '',
+          processedAt: cv.processedAt,
+          cvStructured: result.cvStructured,
+          registrationStructured: result.registrationStructured
         }
       });
     } catch (aiError) {
@@ -97,7 +107,7 @@ export const processCV = async (req, res, next) => {
 
       return res.status(500).json({
         success: false,
-        message: `Failed to process CV with ${model}. Please try again or use a different model.`,
+        message: `Failed to process CV with ${model}. ${aiError.message}`,
         error: aiError.message
       });
     }
@@ -108,7 +118,7 @@ export const processCV = async (req, res, next) => {
     if (req.body.cvId) {
       try {
         await CV.findOneAndUpdate(
-          { _id: req.body.cvId, userId: req.user.id },
+          { _id: req.body.cvId, userId: req.user?.id },
           { 
             processingStatus: 'failed',
             processingError: error.message 
