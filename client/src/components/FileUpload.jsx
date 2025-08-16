@@ -7,7 +7,15 @@ const FileUpload = ({ onUploadSuccess }) => {
   const [message, setMessage] = useState("");
 
   const handleFileChange = (e) => {
-    setSelectedFile(e.target.files[0]);
+    const file = e.target.files[0];
+    setSelectedFile(file);
+    
+    // Clear any previous messages when a new file is selected
+    if (file) {
+      setMessage(`Selected: ${file.name}`);
+    } else {
+      setMessage("");
+    }
   };
 
   const handleUpload = async () => {
@@ -18,7 +26,7 @@ const FileUpload = ({ onUploadSuccess }) => {
 
     try {
       setUploading(true);
-      setMessage("");
+      setMessage("Uploading file...");
 
       const formData = new FormData();
       formData.append("file", selectedFile);
@@ -33,13 +41,24 @@ const FileUpload = ({ onUploadSuccess }) => {
         }
       );
 
+      console.log("Upload response:", res.data); // Debug log
+
       setMessage(res.data.message || "File uploaded successfully!");
-      // If you want to auto-pick the uploaded CV for editing:
+      
+      // Clear the selected file after successful upload
+      setSelectedFile(null);
+      
+      // Reset the file input
+      const fileInput = document.querySelector('.file-input');
+      if (fileInput) fileInput.value = '';
+
+      // Call the success callback with the response data
       if (onUploadSuccess) {
         onUploadSuccess({
-          cvId: res.data.cvId,
-          content: res.data.contentPreview, // Using the first 500 chars for preview
-          originalFilename: res.data.filename,
+          cvId: res.data.cvId || res.data.data?.cvId,
+          contentPreview: res.data.contentPreview || res.data.data?.contentPreview,
+          content: res.data.content || res.data.data?.content,
+          originalFilename: res.data.filename || res.data.data?.originalFilename,
         });
       }
     } catch (error) {
@@ -54,15 +73,27 @@ const FileUpload = ({ onUploadSuccess }) => {
 
   return (
     <div className="file-upload">
-      <input type="file" onChange={handleFileChange} className="file-input" />
-      <button
-        onClick={handleUpload}
-        disabled={uploading}
-        className="btn btn-primary"
-      >
-        {uploading ? "Uploading..." : "Upload"}
-      </button>
-      {message && <p className="upload-message">{message}</p>}
+      <div className="file-upload-container">
+        <input 
+          type="file" 
+          onChange={handleFileChange} 
+          className="file-input"
+          accept=".pdf,.doc,.docx,.txt"
+          disabled={uploading}
+        />
+        <button
+          onClick={handleUpload}
+          disabled={uploading || !selectedFile}
+          className="btn btn-primary"
+        >
+          {uploading ? "Uploading..." : "Upload CV"}
+        </button>
+      </div>
+      {message && (
+        <p className={`upload-message ${message.includes('success') ? 'success' : message.includes('error') || message.includes('failed') ? 'error' : 'info'}`}>
+          {message}
+        </p>
+      )}
     </div>
   );
 };

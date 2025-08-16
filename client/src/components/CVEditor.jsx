@@ -48,7 +48,13 @@ const CVEditor = ({ cvId, originalContent, onUpdate }) => {
             setProcessingStatus("Processing completed!");
             setPreviewHtml(statusData?.previewHtml || "");
             toast.success("CV processed successfully!");
-            onUpdate && onUpdate();
+            // Pass the updated CV data back to Dashboard
+            onUpdate && onUpdate({
+              cvId: processingCvId,
+              previewHtml: statusData?.previewHtml,
+              formattedStructured: statusData?.formattedStructured,
+              isProcessed: true
+            });
             setIsProcessing(false);
           } else if (status === "failed") {
             clearInterval(pollInterval);
@@ -231,7 +237,7 @@ const CVEditor = ({ cvId, originalContent, onUpdate }) => {
             </div>
           </div>
           <div className="cv-panel">
-            <h3 className="cv-panel-title">Template Preview</h3>
+            <h3 className="cv-panel-title">Processed CV Preview</h3>
             <div 
               className="cv-content" 
               style={{ fontFamily: "Palatino Linotype, serif" }} 
