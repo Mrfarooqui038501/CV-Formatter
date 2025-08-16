@@ -1,8 +1,8 @@
-// server/services/aiService.js
 import axios from 'axios';
 
+// Final CV JSON schema (for formattedStructured)
 const CV_EXTRACTION_PROMPT = `
-Extract and structure the CV data into the following JSON format. Be very precise with formatting and ensure all sections are properly filled:
+Extract and structure the CV data into the following JSON format. Be very precise with formatting and ensure all sections are properly filled. The final CV should look professional and polished, so the tone of the extracted text should be professional and well-written.
 
 {
   "fullName": "Full name from CV",
@@ -10,13 +10,12 @@ Extract and structure the CV data into the following JSON format. Be very precis
   "personalDetails": {
     "nationality": "Nationality",
     "languages": ["Language1", "Language2"],
-    "dob": "Date of birth (DD/MM/YYYY format)",
     "maritalStatus": "Single/Married/etc",
     "email": "email@domain.com",
     "phone": "+XX XXX XXX XXXX",
     "location": "City, Country"
   },
-  "profile": "Professional summary/profile paragraph",
+  "profile": "Professional summary/profile paragraph. Rewrite for clarity and professionalism.",
   "experience": [
     {
       "role": "Job Title",
@@ -25,8 +24,8 @@ Extract and structure the CV data into the following JSON format. Be very precis
       "startDate": "YYYY-MM or YYYY",
       "endDate": "YYYY-MM or YYYY or Present",
       "bullets": [
-        "• Achievement or responsibility 1",
-        "• Achievement or responsibility 2"
+        "• Achievement or responsibility 1. Use an action verb.",
+        "• Achievement or responsibility 2. Use an action verb."
       ]
     }
   ],
@@ -43,44 +42,70 @@ Extract and structure the CV data into the following JSON format. Be very precis
 }
 
 Important formatting rules:
-- Job titles should be properly capitalized
-- Experience should be in reverse chronological order (most recent first)
-- Bullet points should start with action verbs
-- Dates should be in consistent format (YYYY-MM or just YYYY)
-- Remove any placeholder text like [empty] or similar
-- Ensure all text is professionally written and grammatically correct
-- Profile section should be a compelling paragraph, not bullet points
+- Job titles should be properly capitalized.
+- Experience should be in reverse chronological order (most recent first).
+- Bullet points should start with action verbs and be concise.
+- Dates should be in a consistent YYYY-MM or just YYYY format.
+- Remove any placeholder text.
+- Ensure all text is professionally written and grammatically correct.
+- Profile section should be a compelling paragraph, not bullet points.
+- Do NOT include age, date of birth (DOB), gender, or dependants in this output, as they are not part of the final CV.
 
 Return ONLY the JSON object, no additional text.`;
 
+
+// Registration Form JSON schema (for registrationStructured)
 const REGISTRATION_EXTRACTION_PROMPT = `
-Extract personal/registration information from this CV into the following JSON format:
+Extract all personal and registration information from the provided text into a precise JSON format. Be extremely thorough and match the schema exactly. If a field is not present in the source text, provide an empty string "" or an empty array [] for that field.
 
 {
   "fullName": "Full name",
   "email": "email@domain.com",
   "phone": "+XX XXX XXX XXXX",
-  "languages": ["Language1", "Language2"],
-  "nationality": "Nationality",
   "dob": "DD/MM/YYYY",
+  "nationality": "Nationality",
+  "gender": "Male/Female/Other",
+  "preferredPronouns": "He/Him/etc",
+  "languages": ["Language1", "Language2"],
+  "passportNumber": "Passport Number",
   "maritalStatus": "Single/Married/etc",
-  "location": "City, Country"
+  "dependants": "N/a or number",
+  "workInUk": "Yes/No",
+  "nationalInsuranceNumber": "National Insurance Number",
+  "utrNumber": "UTR Number",
+  "currentDBS": "Yes/No",
+  "criminalRecord": "Yes/No",
+  "smokesVapes": "Yes/No",
+  "workWithPets": "Yes/No",
+  "drivingLicence": "Yes/No",
+  "licenceClean": "Yes/No",
+  "positionsApplyingFor": "Job Titles",
+  "yearlyDesiredSalary": "Salary",
+  "currentNoticePeriod": "Notice Period",
+  "preferredWorkLocation": "Location",
+  "liveInOrOut": "Live in/out positions preferred?",
+  "emergencyContactDetails": {
+    "name": "Emergency contact name",
+    "phone": "Emergency contact phone number",
+    "relationship": "Relationship to candidate"
+  }
 }
 
 Return ONLY the JSON object, no additional text.`;
 
+
 const HTML_PREVIEW_PROMPT = `
-Convert the following structured CV JSON into clean HTML preview using Palatino Linotype font family. 
-Make it match professional CV formatting with proper spacing and hierarchy:
+Convert the following structured CV JSON into clean HTML preview using the 'Palatino Linotype' font family. 
+Make it match a professional CV with proper spacing and hierarchy, inspired by the EHS template.
 
 Use this structure:
-- Center-aligned header with name (large, bold) and job title (italic)
-- Left-aligned sections with clear headings
-- Professional spacing and typography
-- Bullet points for experience and skills
-- Clean, readable layout
+- A prominent header with the full name (large, bold) and job title (italic) aligned in the center.
+- Separate sections for Personal Details, Profile, Experience, Education, Skills, and Interests.
+- Use bullet points for experience, skills, and interests.
+- Use clear headings for each section.
 
-Return ONLY the HTML content (no <!DOCTYPE> or <html> tags), just the body content.`;
+Return ONLY the HTML content, without <!DOCTYPE>, <html>, <head>, or <body> tags.`;
+
 
 export const formatWithGPT4 = async (rawContent) => {
   if (!process.env.OPENAI_API_KEY) {
@@ -156,6 +181,7 @@ export const formatWithGPT4 = async (rawContent) => {
   }
 };
 
+
 export const formatWithClaude = async (rawContent) => {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('Anthropic API key not configured');
@@ -226,6 +252,7 @@ export const formatWithClaude = async (rawContent) => {
     throw new Error(`Claude processing failed: ${error.response?.data?.error?.message || error.message}`);
   }
 };
+
 
 export const formatWithGemini = async (rawContent) => {
   if (!process.env.GEMINI_API_KEY) {

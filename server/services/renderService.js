@@ -1,4 +1,3 @@
-// server/services/renderService.js
 import { Document, Paragraph, TextRun, Packer, HeadingLevel, AlignmentType, ImageRun } from 'docx';
 
 const CM_TO_EMU = 360000; // 1 cm in EMUs
@@ -73,7 +72,7 @@ export const renderFinalCvDocx = async ({ cv, headshotBuffer }) => {
         page: { margin: { top: 720, bottom: 720, left: 860, right: 860 } } // ~1.27cm
       },
       children: [
-        // Header: Name, Job Title, Photo to the right (simple stack layout)
+        // Header: Name and Job Title
         new Paragraph({
           alignment: AlignmentType.CENTER,
           children: [
@@ -107,7 +106,6 @@ export const renderFinalCvDocx = async ({ cv, headshotBuffer }) => {
         new Paragraph({ text: 'Personal Details', heading: HeadingLevel.HEADING_2 }),
         labelLine('Nationality', cv.personalDetails?.nationality || ''),
         labelLine('Languages', (cv.personalDetails?.languages || []).join(', ')),
-        labelLine('DOB', cv.personalDetails?.dob || ''),
         labelLine('Marital Status', cv.personalDetails?.maritalStatus || ''),
         labelLine('Email', cv.personalDetails?.email || ''),
         labelLine('Phone', cv.personalDetails?.phone || ''),
@@ -169,6 +167,7 @@ export const renderFinalCvDocx = async ({ cv, headshotBuffer }) => {
   return Packer.toBuffer(doc);
 };
 
+
 export const renderRegistrationDocx = async (reg) => {
   const doc = new Document({
     styles: { default: { document: { run: { font: palatino } } } },
@@ -181,9 +180,29 @@ export const renderRegistrationDocx = async (reg) => {
         labelLine('Phone', reg.phone || ''),
         labelLine('Languages', (reg.languages || []).join(', ')),
         labelLine('Nationality', reg.nationality || ''),
-        labelLine('DOB', reg.dob || ''),
+        labelLine('Date of Birth', reg.dob || ''),
+        labelLine('Gender', reg.gender || ''),
+        labelLine('Preferred Gender Pronouns', reg.preferredPronouns || ''),
         labelLine('Marital Status', reg.maritalStatus || ''),
-        labelLine('Location', reg.location || '')
+        labelLine('Dependants', reg.dependants || ''),
+        labelLine('Are you legal and have the correct documents to work in the UK?', reg.workInUk || ''),
+        labelLine('National Insurance Number', reg.nationalInsuranceNumber || ''),
+        labelLine('UTR Number if Self-Employed', reg.utrNumber || ''),
+        labelLine('Do you have a current DBS?', reg.currentDBS || ''),
+        labelLine('Do you have a criminal record?', reg.criminalRecord || ''),
+        labelLine('Do you smoke/vape?', reg.smokesVapes || ''),
+        labelLine('Happy to work in a residence with pets?', reg.workWithPets || ''),
+        labelLine('Do you have a driving licence?', reg.drivingLicence || ''),
+        labelLine('Is your licence clean?', reg.licenceClean || ''),
+        labelLine('Positions applying for', reg.positionsApplyingFor || ''),
+        labelLine('Yearly desired salary', reg.yearlyDesiredSalary || ''),
+        labelLine('Current notice period', reg.currentNoticePeriod || ''),
+        labelLine('Preferred work location', reg.preferredWorkLocation || ''),
+        labelLine('Live in or out positions preferred?', reg.liveInOrOut || ''),
+        new Paragraph({ children: [ new TextRun({ text: 'Emergency Contact Details', bold: true, font: palatino, size: 22 }) ], spacing: { after: 80 } }),
+        labelLine('Name', reg.emergencyContactDetails?.name || ''),
+        labelLine('Telephone', reg.emergencyContactDetails?.phone || ''),
+        labelLine('Relationship to Candidate', reg.emergencyContactDetails?.relationship || ''),
       ]
     }]
   });
